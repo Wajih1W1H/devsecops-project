@@ -1,0 +1,47 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Lint YAML files
+        run: |
+          pip install yamllint
+          yamllint deployment.yaml
+
+      - name: Build Docker image
+        run: docker build -t flask-api:latest .
+
+      - name: Trivy - Scan dependencies
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Trivy - Scan Docker image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: flask-api:latest
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Install Conftest
+        run: |
+          wget https://github.com/open-policy-agent/conftest/releases/download/v0.46.0/conftest_0.46.0_Linux_x86_64.tar.gz
+          tar xzf conftest_0.46.0_Linux_x86_64.tar.gz
+          sudo mv conftest /usr/local/bin/
+
+      - name: Conftest - Check no root pods
+        run: conftest test deployment.yaml --policy policy/
